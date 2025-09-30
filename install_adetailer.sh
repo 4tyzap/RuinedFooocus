@@ -5,3 +5,6 @@
 git clone https://github.com/Bing-su/adetailer.git adetailer
 
 echo "ADetailer extension installed in adetailer directory."
+
+# Install the ADetailer Python package using pip
+pip install adetailer==24.9.0
