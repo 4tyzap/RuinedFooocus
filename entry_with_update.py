@@ -2,6 +2,12 @@ import os
 import sys
 from pathlib import Path
 
+# Import ADetailer patch to enable ADetailer functionality
+try:
+    import modules.adetailer_patch  # noqa: F401
+except Exception as e:
+    print("ADetailer patch not applied:", e)
+
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 os.chdir(root)
