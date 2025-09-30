@@ -26,6 +26,7 @@ class SettingsManager:
         "lora_4_weight": 0.5,
         "lora_5_model": "None",
         "lora_5_weight": 0.5,
+            "use_adetailer": False,
         "theme": "None",
         "auto_negative_prompt": False,
         "OBP_preset": "Standard",
@@ -43,6 +44,7 @@ class SettingsManager:
         self.load_settings()
 
     def set_settings_path(self, subfolder=None):
+        
         self.subfolder = subfolder
         if self.subfolder in [None, "", "default"]:
             path = Path("settings/settings.json")
