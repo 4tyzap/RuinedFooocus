@@ -1,6 +1,6 @@
 import re
 try:
-    import xllamacpp as xlc
+    import llama-cpp-python as xlc
     Llama = "xlc"
 except:
     print("ERROR: Could not load Llama.")
