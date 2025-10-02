@@ -1,18 +1,13 @@
 import re
-try:
-    import llama-cpp-python as xlc
-    Llama = "xlc"
-except:
-    print("ERROR: Could not load Llama.")
-    Llama = None
+from llama_cpp import Llama
 from txtai import Embeddings
 from modules.util import TimeIt
 from pathlib import Path
+from modules.settings import default_settings
 from modules.util import url_to_filename, load_file_from_url
-from shared import path_manager, settings, local_url
-import json
-import xmltodict
+from shared import path_manager
 import modules.async_worker as worker
+import json
 
 def llama_names():
         names = []
@@ -26,14 +21,12 @@ def llama_names():
         return names
 
 def run_llama(system_file, prompt):
-        if Llama == None:
-            return "Error: There is no Llama"
         name = None
-        sys_pat = r"system:.*\n\n"
+        sys_pat = "system:.*\n\n"
         system = re.match(sys_pat, prompt, flags=re.M|re.I)
         if system is not None: # Llama system-prompt provided in the ui-prompt
             name = "Llama"
-            system_prompt = re.sub(r"^[^:]*: *", "", system.group(0), flags=re.M|re.I)
+            system_prompt = re.sub("^[^:]*: *", "", system.group(0), flags=re.M|re.I)
             prompt = re.sub(sys_pat, "", prompt)
         else:
             try:
@@ -52,22 +45,21 @@ def run_llama(system_file, prompt):
             print(f"# User:\n{prompt.strip()}\n")
             print(f"# {name}: (Thinking...)")
             try:
-
-                ret = llama.llm.handle_completions(
-                    {
-                        "max_tokens": 4096,
-                        "prompt": system_prompt + "\n\n" + prompt,
-                    }
-                )
-                res = ret['choices'][0]['text']
+                res = llama.llm.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    repeat_penalty = 1.18,
+                )["choices"][0]["message"]["content"]
             except Exception as e:
                 print(f"LLAMA ERROR: {e}")
                 res = prompt
 
             print(f"{res.strip()}\n")
 
-        del llama.llm
-        llama.llm = None
+        llama.llm._stack.close()
+        llama.llm.close()
 
         return res
 
@@ -82,27 +74,36 @@ class pipeline:
         return gen_data
 
     def load_base_model(self):
-        localfile = settings.default_settings.get("llama_localfile", None) # FIXME set a default file
-        llm_path = path_manager.get_folder_file_path(
-            "llm",
-            localfile,
-            default = Path(path_manager.model_paths["llm_path"]) / localfile
-        )
+        localfile = default_settings.get("llama_localfile", None)
+        repo = default_settings.get("llama_repo", "hugging-quants/Llama-3.2-3B-Instruct-Q8_0-GGUF")
+        file = default_settings.get("llama_file", "*q8_0.gguf")
         with TimeIt("Load LLM"):
-            print(f"Loading {localfile}")
-
-            params = xlc.CommonParams()
-            params.prompt = ""
-            params.model.path = str(llm_path)
-            params.n_predict = 4096
-            params.n_ctx = 1024
-            params.cpuparams.n_threads = 4
-            params.cpuparams_batch.n_threads = 2
-            params.endpoint_metrics = False
-            params.use_jinja = True
-
-            self.llm = xlc.Server(params) # FIXME hide output?
-
+            if localfile is None:
+                print(f"Loading {repo}")
+                self.llm = Llama.from_pretrained(
+                    repo_id=repo,
+                    filename=file,
+                    verbose=False,
+                    n_ctx=4096,
+                    n_gpu_layers=-1,
+                    offload_kqv=True,
+                    flash_attn=True,
+                )
+            else:
+                llm_path = path_manager.get_folder_file_path(
+                    "llm",
+                    localfile,
+                    default = Path(path_manager.model_paths["llm_path"]) / localfile
+                )
+                print(f"Loading {localfile}")
+                self.llm = Llama(
+                    model_path=str(llm_path),
+                    verbose=False,
+                    n_ctx=4096,
+                    n_gpu_layers=-1,
+                    offload_kqv=True,
+                    flash_attn=True,
+                )
         self.embeddings = None
 
     def index_source(self, source):
@@ -120,7 +121,7 @@ class pipeline:
                     progress=True,
                     file_name=url_to_filename(source[1]),
                 )
-                file = open(filename, "r", encoding='utf-8')
+                file = open(filename, "r")
                 data = file.read()
                 file.close()
 
@@ -141,13 +142,10 @@ class pipeline:
 
 
     def process(self, gen_data):
-        if Llama == None:
-            return "Error: There is no Llama"
-
         worker.add_result(
             gen_data["task_id"],
             "preview",
-            gen_data["history"] + [{"role": "assistant", "content": "🤔"}]
+            gen_data["history"]
         )
 
         if self.llm == None:
@@ -178,139 +176,28 @@ class pipeline:
                 context += data["text"] + "\n\n"
             system_prompt += context
 
-        if settings.default_settings.get("enable_llm_tools", False):
-            tools = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "generate_image",
-                        "description": "Generates an image from a prompt.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "prompt": {"type": "string", "description": "The prompt for the image"},
-                            },
-                        },
-                    },
-                },
-            ]
-            tool_prompt = "\nUse the tool when asked to generate an image. When using the tool you must make sure you use the correct format.\n"
-        else:
-            tools = None
-            tool_prompt = ""
-        chat = [{"role": "system", "content": system_prompt + tool_prompt}] + h[-3 if len(h) > 3 else -len(h):] # Keep just the last 3 messages
+        chat = [{"role": "system", "content": system_prompt}] + h[-3 if len(h) > 3 else -len(h):] # Keep just the last 3 messages
 
         print(f"Thinking...")
         with TimeIt("LLM thinking"):
-            result = []
+            response = self.llm.create_chat_completion(
+                messages = chat,
+                max_tokens=1024,
+                stream=True,
+            )
+            #["choices"][0]["message"]["content"]
 
-            result = {
-                "text": "",
-                "tool": {
-                    "function": None,
-                    "arguments": "",
-                }
-            }
-
-            def callback(chunk):
-                if len(chunk.get('choices', [])) == 0:
-                    return
-                try:
-                    delta = chunk['choices'][0]['delta']
-                except:
-                    print(f"ERROR: No delta? {chunk}")
-                    return
-
+            text = ""
+            for chunk in response:
+                delta = chunk['choices'][0]['delta']
                 if 'content' in delta:
-                    text = delta['content']
-
-                    if text is not None:
-                        #print(text, end="")
-                        result['text'] += text
+                    tokens = delta['content']
+                    for token in tokens:
+                        text += token
                         worker.add_result(
                             gen_data["task_id"],
                             "preview",
-                            gen_data["history"] + [{"role": "assistant", "content": result['text']}]
+                            gen_data["history"] + [{"role": "assistant", "content": text}]
                         )
-
-                if 'tool_calls' in delta:
-                    tool_call = delta['tool_calls'][0]['function'] # Simply assume we only have a single tool call
-                    if 'name' in tool_call:
-                        result['tool']['function'] = tool_call['name']
-                    result['tool']['arguments'] += tool_call['arguments']
-
-            self.llm.handle_chat_completions(
-                {
-                    "stream": True,
-                    "messages": chat,
-                    "tools": tools,
-                },
-                lambda d: callback(d),
-            )
-
-            text = result['text']
-
-            call = None
-            tool_error = f"![Error](gradio_api/file=html/error.png)"
-            if settings.default_settings.get("enable_llm_tools", False) and result['tool']['function'] is not None:
-                try:
-                    task_id = -1
-
-                    args = json.loads(result['tool']['arguments'])
-                    prompt = args['prompt']
-
-                    tmp_data = {
-                        'task_type': "tool_call",
-                        'task_id': task_id,
-                        'silent': True,
-                        'prompt': prompt,
-                        'negative': "",
-                        'loras': [
-                            ("", f"{settings.default_settings.get('lora_1_weight', 1.0)} - {settings.default_settings.get('lora_1_model', 'None')}"),
-                            ("", f"{settings.default_settings.get('lora_2_weight', 1.0)} - {settings.default_settings.get('lora_2_model', 'None')}"),
-                            ("", f"{settings.default_settings.get('lora_3_weight', 1.0)} - {settings.default_settings.get('lora_3_model', 'None')}"),
-                            ("", f"{settings.default_settings.get('lora_4_weight', 1.0)} - {settings.default_settings.get('lora_4_model', 'None')}"),
-                            ("", f"{settings.default_settings.get('lora_5_weight', 1.0)} - {settings.default_settings.get('lora_5_model', 'None')}"),
-                        ],
-                        'style_selection': settings.default_settings['style'],
-                        'seed': -1,
-                        'base_model_name': settings.default_settings['base_model'],
-                        'performance_selection': settings.default_settings['performance'],
-                        'aspect_ratios_selection': settings.default_settings["resolution"],
-                        'cn_selection': None,
-                        'cn_type': None,
-                        'silent': True,
-                        'image_number': 1,
-                    }
-
-                    # unload llm model from memory?
-                    # TODO: make this selectable for people with more ram/vram that is socialy acceptable
-                    del self.llm
-                    self.llm = None
-
-                    info_txt = "(Generating image...)"
-                    tmp_text = text + "\n" + info_txt
-
-                    worker.add_result(
-                        gen_data["task_id"],
-                        "preview",
-                        gen_data["history"] + [{"role": "assistant", "content": tmp_text}]
-                    )
-
-                    results = worker._process(tmp_data.copy())
-                    file = results[0]
-                    filename = str(file.relative_to(file.cwd()).as_posix())
-                    url = "gradio_api/file=" + re.sub(r'[^/]+/\.\./', '', filename)
-                    markdown = f"\n*{prompt}*\n\n![Image]({url})\n"
-
-                    text += "\n" + markdown
-
-                except Exception as e:
-                    import traceback
-                    print(f"ERROR:")
-                    traceback.print_exc()
-                    text += f"Error: {e}\n\n"
-                    text += f"Call: {call}\n\n"
-                    text += "Looks like I made a mistake. I really need to make sure I use the correct format. Do you want me to try again?"
 
         return text
