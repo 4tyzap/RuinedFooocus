@@ -115,27 +115,17 @@ def launch_app(args):
 
     # Create the image gallery from the new module
     app_image_browser = ui_image_gallery.create_image_gallery()
-    #app_llama_chat = ui_llama_chat.create_chat()
+    # отключаем llama-chat
     app_settings = ui_settings.create_settings()
 
-    #main_tabs = gr.TabbedInterface(
-        #[shared.gradio_root, app_image_browser, app_llama_chat, app_settings],
-        #[t("Main"), t("Image browser"), t("Chat bots"), t("Settings")],
-        #theme=theme,
-        ##title="RuinedFooocus " + version.version,
-        #css=modules.html.css,
-        #js=modules.html.scripts,
-        #analytics_enabled=False,
-     main_tabs = gr.TabbedInterface(
+    # основной набор вкладок (без чата)
+    main_tabs = gr.TabbedInterface(
         [shared.gradio_root, app_image_browser, app_settings],
         [t("Main"), t("Image browser"), t("Settings")],
         theme=theme,
         title="RuinedFooocus " + version.version,
         analytics_enabled=False,
     )
-)
-
-    #)
 
     shared.server_app, shared.local_url, shared.share_url = main_tabs.launch(
         inbrowser=inbrowser,
