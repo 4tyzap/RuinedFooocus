@@ -1,45 +1,24 @@
 import random
-from typing import Any
+from typing import Any, Tuple
 
-def build_dynamic_prompt(
-    insanitylevel: int = 5,
-    forcesubject: str = "all",
-    artists: str = "all",
-    imagetype: str = "all",
-    onlyartists: bool = False,
-    antivalues: str = "",
-    prefixprompt: str = "",
-    suffixprompt: str = "",
-    promptcompounderlevel: str = "1",
-    seperator: str = "comma",
-    givensubject: str = "",
-    smartsubject: bool = True,
-    giventypeofimage: str = "",
-    imagemodechance: int = 20,
-    gender: str = "all",
-    subtypeobject: str = "all",
-    subtypehumanoid: str = "all",
-    subtypeconcept: str = "all",
-    advancedprompting: bool = True,
-    hardturnoffemojis: bool = False,
-    seed: int = -1,
-    overrideoutfit: str = "",
-    prompt_g_and_l: bool = False,
-    base_model: str = "SD1.5",
-    OBP_preset: str = "",
-    prompt_enhancer: str = "none",
-    subtypeanimal: str = "all",
-    subtypelocation: str = "all",
-    preset_prefix: str = "",
-    preset_suffix: str = "",
-) -> str:
+# ===== Основная генерация промпта (One Button / OBP) =====
+
+def build_dynamic_prompt(*args: Any, **kwargs: Any) -> str:
     """
-    Лёгкая заглушка OneButton random prompt.
+    Лёгкая заглушка One Button Prompt.
 
-    Никаких superprompter / transformers / T5.
-    Просто собираем текст из доступных полей.
+    Все сложные штуки (superprompter, transformers, LLM) выключены.
+    Строим простой промпт из доступных полей kwargs.
     """
     parts = []
+
+    preset_prefix = kwargs.get("preset_prefix") or ""
+    prefixprompt = kwargs.get("prefixprompt") or ""
+    givensubject = (kwargs.get("givensubject") or "").strip()
+    forcesubject = (kwargs.get("forcesubject") or "").strip()
+    giventypeofimage = kwargs.get("giventypeofimage") or ""
+    preset_suffix = kwargs.get("preset_suffix") or ""
+    suffixprompt = kwargs.get("suffixprompt") or ""
 
     if preset_prefix:
         parts.append(preset_prefix)
@@ -47,8 +26,7 @@ def build_dynamic_prompt(
     if prefixprompt:
         parts.append(prefixprompt)
 
-    # берём либо заданный subject, либо forcesubject (если он не 'all')
-    subject = (givensubject or "").strip() or (forcesubject or "").strip()
+    subject = givensubject or forcesubject
     if subject and subject.lower() != "all":
         parts.append(subject)
 
@@ -62,18 +40,71 @@ def build_dynamic_prompt(
         parts.append(suffixprompt)
 
     text = ", ".join([p for p in parts if p])
-
     if not text:
-        # запасной вариант – какой-то базовый осмысленный промпт
         text = "beautiful detailed illustration"
-
     return text
 
+
+# ===== Варианты под SDXL / base (тот же stub, но отдельные функции) =====
+
+def build_dynamic_prompt_sdxl(*args: Any, **kwargs: Any) -> str:
+    """
+    Облегчённая версия для SDXL – та же логика, что и build_dynamic_prompt.
+    """
+    return build_dynamic_prompt(*args, **kwargs)
+
+
+def build_dynamic_prompt_sdxl_base(*args: Any, **kwargs: Any) -> str:
+    """
+    Облегчённая версия для SDXL base – тоже просто прокси.
+    """
+    return build_dynamic_prompt(*args, **kwargs)
+
+
+# ===== Негативный промпт =====
+
+def build_dynamic_negative(*args: Any, **kwargs: Any) -> str:
+    """
+    Stub негативного промпта – возвращаем какой-то базовый набор.
+    Можно при желании поправить под себя.
+    """
+    base_negative = kwargs.get("base_negative") or ""
+    extra_negative = kwargs.get("extra_negative") or ""
+
+    parts = []
+    if base_negative:
+        parts.append(base_negative)
+    if extra_negative:
+        parts.append(extra_negative)
+
+    if not parts:
+        parts = [
+            "low quality, bad anatomy, blurry, distorted, extra limbs, text, watermark"
+        ]
+
+    return ", ".join(parts)
+
+
+# ===== Уровень безумия (insanity) – просто возвращаем число =====
+
+def get_insanity(*args: Any, **kwargs: Any) -> int:
+    """
+    Stub функции get_insanity – возвращаем санкционированный уровень безумия.
+    Если в kwargs передали insanitylevel – используем его, иначе 5.
+    """
+    level = kwargs.get("insanitylevel", 5)
+    try:
+        return int(level)
+    except Exception:
+        return 5
+
+
+# ===== Вариант промпта для вкладки Evolve =====
 
 def createpromptvariant(prompt: str, *args: Any, **kwargs: Any) -> str:
     """
     Простая "вариация" промпта для вкладки Evolve:
-    чуть-чуть перемешиваем слова, без моделей.
+    слегка перемешиваем слова, без моделей.
     """
     words = prompt.split()
     if len(words) > 4:
