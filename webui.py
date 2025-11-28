@@ -126,14 +126,13 @@ def launch_app(args):
         #css=modules.html.css,
         #js=modules.html.scripts,
         #analytics_enabled=False,
- main_tabs = gr.TabbedInterface(
-    [shared.gradio_root, app_image_browser, app_settings],
-    [t("Main"), t("Image browser"), t("Settings")],
-    theme=theme,
-    title="RuinedFooocus " + version.version,
-    ##=cscss=modules.html.css,modules.html.css,
-    ##js=modules.html.scripts,
-    analytics_enabled=False,
+     main_tabs = gr.TabbedInterface(
+        [shared.gradio_root, app_image_browser, app_settings],
+        [t("Main"), t("Image browser"), t("Settings")],
+        theme=theme,
+        title="RuinedFooocus " + version.version,
+        analytics_enabled=False,
+    )
 )
 
     #)
